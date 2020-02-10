@@ -14,7 +14,7 @@ class HashMap {
     size_t DELETED = SIZE_MAX - 1;
     size_t SIZE_LIMIT = 2;
 
-    size_t operations_complete{};
+    size_t operations_complete = 0;
     Hash hasher;
     std::vector<std::shared_ptr<Info>> elements;
     std::vector<size_t> place, rev_place;
@@ -66,7 +66,7 @@ class HashMap {
         place[id] = DELETED;
     }
 
-public:
+ public:
     class iterator {
     private:
         HashMap* owner;
