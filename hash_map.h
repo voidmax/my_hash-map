@@ -47,8 +47,7 @@ class HashMap {
         }
     }
 
-    // This method changes the structure of the table in order to maintain some
-    // acceptable density.
+    // This method finds the place where the key should be.
     // The average-case complexity is O(1).
     // The worst-case time complexity is O(n).
     size_t FindPlace(const KeyType& key) const {
@@ -199,6 +198,8 @@ class HashMap {
         Rebuild();
     }
 
+    // The average-case complexity is O(n).
+    // The worst-case time complexity is O(n^2).
     template <class ForwardIt>
     HashMap(ForwardIt begin,
             ForwardIt end,
@@ -210,6 +211,8 @@ class HashMap {
         }
     }
 
+    // The average-case complexity is O(n).
+    // The worst-case time complexity is O(n^2).
     HashMap(std::initializer_list<std::pair<KeyType, ValueType>> list,
             Hash _hasher = Hash()) : hasher_(_hasher) {
         hasher_ = _hasher;
@@ -219,6 +222,8 @@ class HashMap {
         }
     }
 
+    // The average-case complexity is O(n).
+    // The worst-case time complexity is O(n^2).
     HashMap(const HashMap& other) : hasher_(other.hasher_) {
         Rebuild();
         for (auto element : other) {
@@ -226,6 +231,8 @@ class HashMap {
         }
     }
 
+    // The average-case complexity is O(n).
+    // The worst-case time complexity is O(n^2).
     HashMap& operator = (HashMap other) {
         clear();
         for (auto element : other) {
@@ -246,6 +253,8 @@ class HashMap {
         return hasher_;
     }
 
+    // The average-case complexity is O(1).
+    // The worst-case time complexity is O(n).
     void insert(const std::pair<KeyType, ValueType>& value) {
         size_t id = FindPlace(value.first);
         if (place_[id] == kNoValue) {
@@ -253,6 +262,8 @@ class HashMap {
         }
     }
 
+    // The average-case complexity is O(1).
+    // The worst-case time complexity is O(n).
     void erase(const KeyType& key) {
         size_t id = FindPlace(key);
         if (place_[id] != kNoValue) {
@@ -260,6 +271,8 @@ class HashMap {
         }
     }
 
+    // The average-case complexity is O(1).
+    // The worst-case time complexity is O(n).
     iterator find(const KeyType& key) {
         size_t id = FindPlace(key);
         if (place_[id] == kNoValue) {
@@ -268,6 +281,8 @@ class HashMap {
         return iterator(this, place_[id]);
     }
 
+    // The average-case complexity is O(1).
+    // The worst-case time complexity is O(n).
     const_iterator find(const KeyType& key) const {
         size_t id = FindPlace(key);
         if (place_[id] == kNoValue) {
@@ -276,6 +291,8 @@ class HashMap {
         return const_iterator(this, place_[id]);
     }
 
+    // The average-case complexity is O(1).
+    // The worst-case time complexity is O(n).
     ValueType& operator[](const KeyType& key) {
         size_t id = FindPlace(key);
         if (place_[id] == kNoValue) {
@@ -285,6 +302,8 @@ class HashMap {
         return elements_[place_[id]]->second;
     }
 
+    // The average-case complexity is O(1).
+    // The worst-case time complexity is O(n).
     const ValueType& at(const KeyType& key) const {
         size_t id = FindPlace(key);
         if (place_[id] == kNoValue) {
@@ -293,6 +312,7 @@ class HashMap {
         return elements_[place_[id]]->second;
     }
 
+    // The complexity is O(n).
     void clear() {
         elements_.clear();
         Rebuild();
