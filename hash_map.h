@@ -1,152 +1,180 @@
-// Copyright [2020] <voidmax>
+// Copyright (c) 2020, Vladimir Romanov <vrom272000@gmail.com>
+// All rights reserved.
 #include <stdexcept>
 #include <algorithm>
 #include <vector>
 #include <memory>
 #include <utility>
 
+// The realisation of hash table using open addressing with linear probing.
+// Let n be the current number of elements in the hash table.
 template<class KeyType, class ValueType,
         class Hash = std::hash<KeyType>>
 class HashMap {
-    using Info = std::pair<const KeyType, ValueType>;
+  public:
+    static const size_t kNoValue = SIZE_MAX;
+    static const size_t kDeleted = SIZE_MAX - 1;
+    static const size_t kDensity = 2;
+    static const size_t kSizeChange = kDensity * kDensity;
 
-    size_t NO_VALUE = SIZE_MAX;
-    size_t DELETED = SIZE_MAX - 1;
-    size_t SIZE_LIMIT = 2;
+  private:
+    using Element = std::pair<const KeyType, ValueType>;
 
-    size_t operations_complete = 0;
-    Hash hasher;
-    std::vector<std::shared_ptr<Info>> elements;
-    std::vector<size_t> place, rev_place;
+    size_t operations_complete_ = 0;
+    Hash hasher_;
+    std::vector<std::shared_ptr<Element>> elements_;
+    std::vector<size_t> place_, rev_place_;
 
-    void rebuild() {
-        place.resize(elements.size() * (SIZE_LIMIT * 2) + 1);
-        rev_place.resize(place.size());
-        fill(place.begin(), place.end(), NO_VALUE);
-        operations_complete = 0;
+    // This method changes the structure of the table in order to maintain some
+    // acceptable density.
+    // Iterators and pointers can be invalidated.
+    // The average-case complexity is O(n).
+    // The worst-case time complexity is O(n^2).
+    void Rebuild() {
+        place_.resize(elements_.size() * kSizeChange + 1);
+        rev_place_.resize(place_.size());
+        fill(place_.begin(), place_.end(), kNoValue);
+        operations_complete_ = 0;
 
-        std::vector<std::shared_ptr<Info>> temp;
-        for (auto i : elements) {
+        std::vector<std::shared_ptr<Element>> temp;
+        for (const auto& i : elements_) {
             temp.push_back(i);
         }
-        elements.clear();
+        elements_.clear();
 
         for (auto element : temp) {
             insert(*element);
         }
     }
 
-    size_t find_place(const KeyType& key) const {
-        for (size_t i = hasher(key) % place.size();; ++i) {
-            if (i == place.size()) {
+    // This method changes the structure of the table in order to maintain some
+    // acceptable density.
+    // The average-case complexity is O(1).
+    // The worst-case time complexity is O(n).
+    size_t FindPlace(const KeyType& key) const {
+        size_t i = hasher_(key) % place_.size();
+        while (true) {
+            if (i == place_.size()) {
                 i = 0;
             }
-            if (place[i] == NO_VALUE ||
-                (place[i] != DELETED && elements[place[i]]->first == key)) {
+            if (place_[i] == kNoValue ||
+                (place_[i] != kDeleted && elements_[place_[i]]->first == key)) {
                 return i;
             }
+            ++i;
         }
     }
 
-    void adding(size_t id, const Info& value) {
-        ++operations_complete;
-        place[id] = elements.size();
-        rev_place[elements.size()] = id;
-        elements.emplace_back(std::shared_ptr<Info>(new Info(value)));
-        if (operations_complete * SIZE_LIMIT >= place.size()) {
-            rebuild();
+    // This method adds the given element assuming at place id assuming that
+    // place was found using method FindPlace.
+    // The average-case complexity is O(1).
+    // The worst-case time complexity is O(n).
+    void Adding(size_t id, const Element& value) {
+        ++operations_complete_;
+        place_[id] = elements_.size();
+        rev_place_[elements_.size()] = id;
+        elements_.emplace_back(std::shared_ptr<Element>(new Element(value)));
+        if (operations_complete_ * kDensity >= place_.size()) {
+            Rebuild();
         }
     }
 
-    void deleting(size_t id) {
-        std::swap(elements.back(), elements[place[id]]);
-        elements.pop_back();
-        place[rev_place[elements.size()]] = place[id];
-        rev_place[place[id]] = rev_place[elements.size()];
-        place[id] = DELETED;
+    // This method deletes the element at place id assuming that place id is not
+    // empty.
+    // The average-case complexity is O(1).
+    // The worst-case time complexity is O(n).
+    void Deleting(size_t id) {
+        std::swap(elements_.back(), elements_[place_[id]]);
+        elements_.pop_back();
+        place_[rev_place_[elements_.size()]] = place_[id];
+        rev_place_[place_[id]] = rev_place_[elements_.size()];
+        place_[id] = kDeleted;
+        if (place_.size() > elements_.size() * kSizeChange * kDensity) {
+            Rebuild();
+        }
     }
 
- public:
+  public:
     class iterator {
     private:
-        HashMap* owner;
-        size_t pointer;
+        HashMap* owner_;
+        size_t pointer_;
 
     public:
         iterator() {}
 
-        iterator(HashMap* _owner, size_t it) : owner(_owner), pointer(it) {}
+        iterator(HashMap* _owner, size_t it) : owner_(_owner), pointer_(it) {}
 
         iterator(const iterator& other) {
-            owner = other.owner;
-            pointer = other.pointer;
+            owner_ = other.owner_;
+            pointer_ = other.pointer_;
         }
 
         iterator& operator++() {
-            ++pointer;
+            ++pointer_;
             return *this;
         }
 
         iterator operator++(int) {
-            auto old_pointer = pointer++;
-            return iterator(owner, old_pointer);
+            auto old_pointer = pointer_++;
+            return iterator(owner_, old_pointer);
         }
         bool operator == (iterator other) const {
-            return other.pointer == pointer && other.owner == owner;
+            return other.pointer_ == pointer_ && other.owner_ == owner_;
         }
 
         bool operator != (iterator other) const {
             return !(*this == other);
         }
 
-        Info& operator *() {
-            return *(owner->elements[pointer]);
+        Element& operator *() {
+            return *(owner_->elements_[pointer_]);
         }
 
-        Info* operator ->() {
+        Element* operator ->() {
             return &(operator*());
         }
     };
 
     class const_iterator {
     private:
-        const HashMap* owner;
-        size_t pointer;
+        const HashMap* owner_;
+        size_t pointer_;
 
     public:
         const_iterator() {}
 
-        const_iterator(const HashMap* _owner, size_t it) : owner(_owner),
-                                                           pointer(it) {}
+        const_iterator(const HashMap* _owner, size_t it) : owner_(_owner),
+                                                           pointer_(it) {}
 
         const_iterator& operator++() {
-            ++pointer;
+            ++pointer_;
             return *this;
         }
 
         const_iterator(const const_iterator& other) {
-            owner = other.owner;
-            pointer = other.pointer;
+            owner_ = other.owner_;
+            pointer_ = other.pointer_;
         }
 
         const_iterator operator++(int) {
-            auto old_pointer = pointer++;
-            return const_iterator(owner, old_pointer);
+            auto old_pointer = pointer_++;
+            return const_iterator(owner_, old_pointer);
         }
 
         bool operator == (const_iterator other) const {
-            return other.pointer == pointer;
+            return other.pointer_ == pointer_;
         }
 
         bool operator != (const_iterator other) const {
-            return other.pointer != pointer;
+            return other.pointer_ != pointer_;
         }
 
-        const Info& operator *() const {
-            return *(owner->elements[pointer]);
+        const Element& operator *() const {
+            return *(owner_->elements_[pointer_]);
         }
 
-        const Info* operator ->() const {
+        const Element* operator ->() const {
             return &(operator*());
         }
     };
@@ -156,7 +184,7 @@ class HashMap {
     }
 
     iterator end() {
-        return iterator(this, elements.size());
+        return iterator(this, elements_.size());
     }
 
     const_iterator begin() const {
@@ -164,35 +192,35 @@ class HashMap {
     }
 
     const_iterator end() const {
-        return const_iterator(this, elements.size());
+        return const_iterator(this, elements_.size());
     }
 
-    explicit HashMap(Hash _hasher = Hash()) : hasher(_hasher) {
-        rebuild();
+    explicit HashMap(Hash _hasher = Hash()) : hasher_(_hasher) {
+        Rebuild();
     }
 
     template <class ForwardIt>
     HashMap(ForwardIt begin,
             ForwardIt end,
-            Hash _hasher = Hash()) : hasher(_hasher) {
-        hasher = _hasher;
-        rebuild();
+            Hash _hasher = Hash()) : hasher_(_hasher) {
+        hasher_ = _hasher;
+        Rebuild();
         for (auto it = begin; it != end; ++it) {
             insert(*it);
         }
     }
 
     HashMap(std::initializer_list<std::pair<KeyType, ValueType>> list,
-            Hash _hasher = Hash()) : hasher(_hasher) {
-        hasher = _hasher;
-        rebuild();
+            Hash _hasher = Hash()) : hasher_(_hasher) {
+        hasher_ = _hasher;
+        Rebuild();
         for (auto it = list.begin(); it != list.end(); ++it) {
             insert(*it);
         }
     }
 
-    HashMap(const HashMap& other) : hasher(other.hasher) {
-        rebuild();
+    HashMap(const HashMap& other) : hasher_(other.hasher_) {
+        Rebuild();
         for (auto element : other) {
             insert(element);
         }
@@ -207,66 +235,78 @@ class HashMap {
     }
 
     size_t size() const {
-        return elements.size();
+        return elements_.size();
     }
 
     bool empty() const {
-        return elements.empty();
+        return elements_.empty();
     }
 
     Hash hash_function() const {
-        return hasher;
+        return hasher_;
     }
 
     void insert(const std::pair<KeyType, ValueType>& value) {
-        size_t id = find_place(value.first);
-        if (place[id] == NO_VALUE) {
-            adding(id, value);
+        size_t id = FindPlace(value.first);
+        if (place_[id] == kNoValue) {
+            Adding(id, value);
         }
     }
 
     void erase(const KeyType& key) {
-        size_t id = find_place(key);
-        if (place[id] != NO_VALUE) {
-            deleting(id);
+        size_t id = FindPlace(key);
+        if (place_[id] != kNoValue) {
+            Deleting(id);
         }
     }
 
     iterator find(const KeyType& key) {
-        size_t id = find_place(key);
-        if (place[id] == NO_VALUE) {
+        size_t id = FindPlace(key);
+        if (place_[id] == kNoValue) {
             return end();
         }
-        return iterator(this, place[id]);
+        return iterator(this, place_[id]);
     }
 
     const_iterator find(const KeyType& key) const {
-        size_t id = find_place(key);
-        if (place[id] == NO_VALUE) {
+        size_t id = FindPlace(key);
+        if (place_[id] == kNoValue) {
             return end();
         }
-        return const_iterator(this, place[id]);
+        return const_iterator(this, place_[id]);
     }
 
     ValueType& operator[](const KeyType& key) {
-        size_t id = find_place(key);
-        if (place[id] == NO_VALUE) {
-            adding(id, {key, ValueType()});
-            id = find_place(key);  // id may be changed after rebuild
+        size_t id = FindPlace(key);
+        if (place_[id] == kNoValue) {
+            Adding(id, {key, ValueType()});
+            id = FindPlace(key);  // Id may be changed after Rebuild.
         }
-        return elements[place[id]]->second;
+        return elements_[place_[id]]->second;
     }
 
     const ValueType& at(const KeyType& key) const {
-        size_t id = find_place(key);
-        if (place[id] == NO_VALUE) {
+        size_t id = FindPlace(key);
+        if (place_[id] == kNoValue) {
             throw std::out_of_range("There is no element");
         }
-        return elements[place[id]]->second;
+        return elements_[place_[id]]->second;
     }
 
     void clear() {
-        elements.clear();
-        rebuild();
+        elements_.clear();
+        Rebuild();
     }
 };
+
+template<class KeyType, class ValueType, class Hash>
+const size_t HashMap<KeyType, ValueType, Hash>::kNoValue;
+
+template<class KeyType, class ValueType, class Hash>
+const size_t HashMap<KeyType, ValueType, Hash>::kDeleted;
+
+template<class KeyType, class ValueType, class Hash>
+const size_t HashMap<KeyType, ValueType, Hash>::kDensity;
+
+template<class KeyType, class ValueType, class Hash>
+const size_t HashMap<KeyType, ValueType, Hash>::kSizeChange;
