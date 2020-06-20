@@ -11,6 +11,11 @@
 // Let n be the current number of elements in the hash table.
 // It will be used in formulas of the complexity.
 
+// The size of the table is at most n * kDensity^3 and at least n * kDensity.
+// If this statement is false, Rebuild will set the size of the table to
+// the geometric mean of those bounds.
+// In other words, n * kSizeChange = n * kDensity^2.
+
 template<class KeyType, class ValueType,
         class Hash = std::hash<KeyType>>
 class HashMap {
@@ -20,101 +25,8 @@ public:
     static const size_t kDensity = 2;
     static const size_t kSizeChange = kDensity * kDensity;
 
-private:
     using Element = std::pair<const KeyType, ValueType>;
 
-    size_t operations_complete_ = 0;
-    Hash hasher_;
-    std::vector<std::shared_ptr<Element>> elements_;
-    std::vector<size_t> place_, rev_place_;
-
-    // This method changes the structure of the table in order to maintain some
-    // acceptable density.
-    // Iterators and pointers can be invalidated.
-    // The expected time complexity is O(n).
-    // The worst-case time complexity is O(n^2).
-    void Rebuild() {
-        if (elements_.empty()) {
-            place_.resize(1);
-        } else {
-            place_.resize(elements_.size() * kSizeChange);
-        }
-        rev_place_.resize(place_.size());
-        fill(place_.begin(), place_.end(), kNoValue);
-        operations_complete_ = 0;
-
-        std::vector<std::shared_ptr<Element>> temp;
-        for (const auto& i : elements_) {
-            temp.push_back(i);
-        }
-        elements_.clear();
-
-        for (auto element : temp) {
-            insert(*element);
-        }
-    }
-
-    // This method finds the place where the key should be.
-    // The expected time complexity is O(1).
-    // The worst-case time complexity is O(n).
-    size_t FindPlace(const KeyType& key) const {
-        size_t i = hasher_(key) % place_.size();
-        while (true) {
-            if (i == place_.size()) {
-                i = 0;
-            }
-            if (place_[i] == kNoValue ||
-                (place_[i] != kDeleted && elements_[place_[i]]->first == key)) {
-                return i;
-            }
-            ++i;
-        }
-    }
-
-    // This method changes the size of the array place_ if it is too big.
-    // The expected time complexity is O(1).
-    // The worst-case time complexity is O(n).
-    void MakeGoodBig() {
-        if (operations_complete_ * kDensity >= place_.size()) {
-            Rebuild();
-        }
-    }
-
-    // This method changes the size of the array place_ if it is too small.
-    // The expected time complexity is O(1).
-    // The worst-case time complexity is O(n).
-    void MakeGoodSmall() {
-        if (place_.size() > elements_.size() * kSizeChange * kDensity) {
-            Rebuild();
-        }
-    }
-
-    // This method adds the given element assuming at place id assuming that
-    // place was found using method FindPlace.
-    // The expected time complexity is O(1).
-    // The worst-case time complexity is O(n).
-    void AddElement(size_t id, const Element& value) {
-        ++operations_complete_;
-        place_[id] = elements_.size();
-        rev_place_[elements_.size()] = id;
-        elements_.emplace_back(std::shared_ptr<Element>(new Element(value)));
-        MakeGoodBig();
-    }
-
-    // This method deletes the element at place id assuming that place id is not
-    // empty.
-    // The expected time complexity is O(1).
-    // The worst-case time complexity is O(n).
-    void DeleteElement(size_t id) {
-        std::swap(elements_.back(), elements_[place_[id]]);
-        elements_.pop_back();
-        place_[rev_place_[elements_.size()]] = place_[id];
-        rev_place_[place_[id]] = rev_place_[elements_.size()];
-        place_[id] = kDeleted;
-        MakeGoodSmall();
-    }
-
-public:
     class iterator {
     private:
         HashMap* owner_;
@@ -262,14 +174,17 @@ public:
         return *this;
     }
 
+    // The time complexity is O(1).
     size_t size() const {
         return elements_.size();
     }
 
+    // The time complexity is O(1).
     bool empty() const {
         return elements_.empty();
     }
 
+    // The time complexity is O(1).
     Hash hash_function() const {
         return hasher_;
     }
@@ -337,6 +252,99 @@ public:
     void clear() {
         elements_.clear();
         Rebuild();
+    }
+
+private:
+    size_t operations_complete_ = 0;
+    Hash hasher_;
+    std::vector<std::unique_ptr<Element>> elements_;
+    std::vector<size_t> place_;
+    std::vector<size_t> rev_place_;
+
+    // This method changes the structure of the table in order to maintain some
+    // acceptable density.
+    // Iterators and pointers can be invalidated.
+    // The expected time complexity is O(n).
+    // The worst-case time complexity is O(n^2).
+    void Rebuild() {
+        if (elements_.empty()) {
+            place_.resize(1);
+        } else {
+            place_.resize(elements_.size() * kSizeChange);
+        }
+        rev_place_.resize(place_.size());
+        fill(place_.begin(), place_.end(), kNoValue);
+        operations_complete_ = 0;
+
+        std::vector<std::unique_ptr<Element>> temp;
+        for (auto& i : elements_) {
+            temp.emplace_back(i.release());
+        }
+        elements_.clear();
+
+        for (const auto& element : temp) {
+            insert(*element);
+        }
+    }
+
+    // This method finds the place where the key should be.
+    // The expected time complexity is O(1).
+    // The worst-case time complexity is O(n).
+    size_t FindPlace(const KeyType& key) const {
+        size_t i = hasher_(key) % place_.size();
+        while (true) {
+            if (i == place_.size()) {
+                i = 0;
+            }
+            if (place_[i] == kNoValue ||
+                (place_[i] != kDeleted && elements_[place_[i]]->first == key)) {
+                return i;
+            }
+            ++i;
+        }
+    }
+
+    // This method changes the size of the array place_ if it is too big.
+    // The expected time complexity is O(1).
+    // The worst-case time complexity is O(n).
+    void MakeGoodBig() {
+        if (operations_complete_ * kDensity >= place_.size()) {
+            Rebuild();
+        }
+    }
+
+    // This method changes the size of the array place_ if it is too small.
+    // The expected time complexity is O(1).
+    // The worst-case time complexity is O(n).
+    void MakeGoodSmall() {
+        if (place_.size() > elements_.size() * kSizeChange * kDensity) {
+            Rebuild();
+        }
+    }
+
+    // This method adds the given element assuming at place id assuming that
+    // place was found using method FindPlace.
+    // The expected time complexity is O(1).
+    // The worst-case time complexity is O(n).
+    void AddElement(size_t id, const Element& value) {
+        ++operations_complete_;
+        place_[id] = elements_.size();
+        rev_place_[elements_.size()] = id;
+        elements_.emplace_back(new Element(value));
+        MakeGoodBig();
+    }
+
+    // This method deletes the element at place id assuming that place id is not
+    // empty.
+    // The expected time complexity is O(1).
+    // The worst-case time complexity is O(n).
+    void DeleteElement(size_t id) {
+        std::swap(elements_.back(), elements_[place_[id]]);
+        elements_.pop_back();
+        place_[rev_place_[elements_.size()]] = place_[id];
+        rev_place_[place_[id]] = rev_place_[elements_.size()];
+        place_[id] = kDeleted;
+        MakeGoodSmall();
     }
 };
 
