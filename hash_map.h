@@ -6,7 +6,8 @@
 #include <memory>
 #include <utility>
 
-// The realisation of hash table using open addressing with linear probing.
+// The realisation of hash table with linear iteration using open addressing
+// with linear probing search strategy. 
 
 // Let n be the current number of elements in the hash table.
 // It will be used in formulas of the complexity.
